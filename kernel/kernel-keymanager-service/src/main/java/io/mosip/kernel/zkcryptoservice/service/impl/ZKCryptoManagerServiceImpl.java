@@ -79,6 +79,10 @@ import io.mosip.kernel.zkcryptoservice.service.spi.ZKCryptoManagerService;
 public class ZKCryptoManagerServiceImpl implements ZKCryptoManagerService, InitializingBean {
 
 	private static final Logger LOGGER = KeymanagerLogger.getLogger(ZKCryptoManagerServiceImpl.class);
+
+	// Shared across all zkEncrypt calls — SecureRandom is thread-safe and reusing
+	// a single instance avoids repeated OS entropy seeding at ZK encryption rates.
+	private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 	
     @Value("${mosip.kernel.crypto.symmetric-algorithm-name}")
 	private String aesGCMTransformation;
@@ -214,7 +218,6 @@ public class ZKCryptoManagerServiceImpl implements ZKCryptoManagerService, Initi
 		Key secretRandomKey = getDecryptedRandomKey(encryptedKeyData);
 		Key derivedKey = getDerivedKey(id, secretRandomKey);
 
-		SecureRandom sRandom = new SecureRandom();
 		List<CryptoDataDto> responseCryptoData = new ArrayList<>();
 		cryptoDataList.forEach(reqCryptoData -> {
 			String identifier = reqCryptoData.getIdentifier();
@@ -222,8 +225,8 @@ public class ZKCryptoManagerServiceImpl implements ZKCryptoManagerService, Initi
 			byte[] nonce = new byte[ZKCryptoManagerConstants.GCM_NONCE_LENGTH];
 			byte[] aad = new byte[ZKCryptoManagerConstants.GCM_AAD_LENGTH];
 
-			sRandom.nextBytes(nonce);
-			sRandom.nextBytes(aad);
+			SECURE_RANDOM.nextBytes(nonce);
+			SECURE_RANDOM.nextBytes(aad);
 
 			byte[] encryptedData = doCipherOps(derivedKey, dataToEncrypt, Cipher.ENCRYPT_MODE, nonce, aad);
 			byte[] dbIndexBytes = getIndexBytes(randomKeyIndex);

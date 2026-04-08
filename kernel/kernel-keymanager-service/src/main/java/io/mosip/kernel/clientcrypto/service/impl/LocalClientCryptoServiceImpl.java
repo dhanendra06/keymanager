@@ -52,7 +52,7 @@ class LocalClientCryptoServiceImpl implements ClientCryptoService {
     private static final String PUBLIC_KEY = "reg.pub";
     private static final String README = "readme.txt";
 
-    private static SecureRandom secureRandom = null;
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
     protected static CryptoCoreSpec<byte[], byte[], SecretKey, PublicKey, PrivateKey, String> cryptoCore;
     private ApplicationContext applicationContext;
     private Boolean useResidentServiceModuleKey;
@@ -171,11 +171,8 @@ class LocalClientCryptoServiceImpl implements ClientCryptoService {
     }
 
     public static byte[] generateRandomBytes(int length) {
-        if(secureRandom == null)
-            secureRandom = new SecureRandom();
-
         byte[] bytes = new byte[length];
-        secureRandom.nextBytes(bytes);
+        SECURE_RANDOM.nextBytes(bytes);
         return bytes;
     }
 

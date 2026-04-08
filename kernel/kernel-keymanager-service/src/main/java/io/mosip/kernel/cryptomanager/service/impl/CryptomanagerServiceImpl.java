@@ -117,7 +117,10 @@ public class CryptomanagerServiceImpl implements CryptomanagerService {
 	@Value("${mosip.keymanager.argon2.hash.generate.parallelism:2}")
     private int argon2Parallelism;
 
-	private static SecureRandom secureRandom = null;
+	// Initialized once at class-load time by the JVM — thread-safe without any
+	// synchronization. SecureRandom.nextBytes() is internally synchronized, so a
+	// single shared instance is safe at any concurrency level (NIST SP 800-90A).
+	private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
 	/**
 	 * {@link KeyGenerator} instance
@@ -162,14 +165,11 @@ public class CryptomanagerServiceImpl implements CryptomanagerService {
 			LOGGER.info(CryptomanagerConstant.SESSIONID, this.getClass().getSimpleName(),
 					CryptomanagerConstant.GEN_ARGON2_HASH, "Loading Creating Cache for Object Key: " + objectKey);
 			if (objectKey.equals(CryptomanagerConstant.CACHE_AES_KEY)) {
-				javax.crypto.KeyGenerator keyGenerator = KeyGeneratorUtils.getKeyGenerator(AES_KEY_TYPE, 
-							AES_KEY_SIZE, new SecureRandom());
+				javax.crypto.KeyGenerator keyGenerator = KeyGeneratorUtils.getKeyGenerator(AES_KEY_TYPE,
+							AES_KEY_SIZE, SECURE_RANDOM);
 				return keyGenerator.generateKey();
 			} else if (objectKey.equals(CACHE_INT_COUNTER)) {
-				if(secureRandom == null)
-            		secureRandom = new SecureRandom();
-				
-				return new AtomicLong(secureRandom.nextLong());
+				return new AtomicLong(SECURE_RANDOM.nextLong());
 			} 
 			return null;
 		})
@@ -354,13 +354,12 @@ public class CryptomanagerServiceImpl implements CryptomanagerService {
 						CryptomanagerErrorCode.INVALID_REQUEST.getErrorMessage());
 		}
 
-		SecureRandom sRandom = new SecureRandom(); 
 		byte[] pbeSalt = new byte[PBE_SALT_LENGTH];
-		sRandom.nextBytes(pbeSalt);
+		SECURE_RANDOM.nextBytes(pbeSalt);
 
 		SecretKey derivedKey = getDerivedKey(userPin, pbeSalt);
 		byte[] gcmNonce = new byte[GCM_NONCE_LENGTH];
-		sRandom.nextBytes(gcmNonce);
+		SECURE_RANDOM.nextBytes(gcmNonce);
 		byte[] encryptedData = cryptoCore.symmetricEncrypt(derivedKey, dataToEnc.getBytes(), gcmNonce, pbeSalt);
 
 		byte[] finalEncryptedData = new byte[encryptedData.length + PBE_SALT_LENGTH + GCM_NONCE_LENGTH];
@@ -607,9 +606,7 @@ public class CryptomanagerServiceImpl implements CryptomanagerService {
 			SecretKey aesKey = (SecretKey) saltGenParamsCache.get(CryptomanagerConstant.CACHE_AES_KEY);
 			AtomicLong intCounter = (AtomicLong) saltGenParamsCache.get(CryptomanagerConstant.CACHE_INT_COUNTER);
 			if (Objects.isNull(intCounter)) {
-				if(secureRandom == null)
-					secureRandom = new SecureRandom();
-				intCounter = new AtomicLong(secureRandom.nextLong());
+				intCounter = new AtomicLong(SECURE_RANDOM.nextLong());
 			}
             long saltInput = intCounter.getAndIncrement();
 
@@ -651,13 +648,10 @@ public class CryptomanagerServiceImpl implements CryptomanagerService {
 			LOGGER.error(CryptomanagerConstant.SESSIONID, this.getClass().getSimpleName(), 
 						CryptomanagerConstant.GEN_ARGON2_HASH,	"Error generation of random salt.", e);
 		}
-		LOGGER.info(CryptomanagerConstant.SESSIONID, this.getClass().getSimpleName(), CryptomanagerConstant.GEN_ARGON2_HASH, 
+		LOGGER.info(CryptomanagerConstant.SESSIONID, this.getClass().getSimpleName(), CryptomanagerConstant.GEN_ARGON2_HASH,
 						"Generating Random Salt using Secure Random because encrypted random bytes failed.");
-		if(secureRandom == null)
-            secureRandom = new SecureRandom();
-
         byte[] bytes = new byte[32];
-        secureRandom.nextBytes(bytes);
+        SECURE_RANDOM.nextBytes(bytes);
         return bytes;
 	}
 }

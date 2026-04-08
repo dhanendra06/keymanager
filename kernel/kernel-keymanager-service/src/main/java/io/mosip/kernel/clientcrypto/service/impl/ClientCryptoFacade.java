@@ -29,7 +29,8 @@ import java.util.Objects;
 public class ClientCryptoFacade {
 
     private static final Logger LOGGER = KeymanagerLogger.getLogger(ClientCryptoFacade.class);
-    private static SecureRandom secureRandom = null;
+    // Initialized once at class-load time — thread-safe without synchronization.
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
     private static ClientCryptoService clientCryptoService = null;
 
     @Autowired
@@ -201,11 +202,8 @@ public class ClientCryptoFacade {
     }
 
     public static byte[] generateRandomBytes(int length) {
-        if(secureRandom == null)
-            secureRandom = new SecureRandom();
-
         byte[] bytes = new byte[length];
-        secureRandom.nextBytes(bytes);
+        SECURE_RANDOM.nextBytes(bytes);
         return bytes;
     }
 

@@ -29,12 +29,16 @@ public class EC256SignatureProviderImpl implements SignatureProvider {
 
     private static final Logger LOGGER = KeymanagerLogger.getLogger(EC256SignatureProviderImpl.class);
 
+	// Single shared instance — SecureRandom is thread-safe (nextBytes is synchronized).
+	// Avoids per-call OS entropy seeding at high signing rates (e.g. JWS on every response).
+	private static final SecureRandom SECURE_RANDOM = new SecureRandom();
+
     @Override
     public String sign(PrivateKey privateKey, byte[] signData, String providerName) {
-        
+
         try {
             Signature signatureObj = Signature.getInstance(SignatureConstant.EC256_ALGORITHM, providerName);
-            signatureObj.initSign(privateKey, new SecureRandom());
+            signatureObj.initSign(privateKey, SECURE_RANDOM);
             signatureObj.update(signData);
             byte[] signatureData = signatureObj.sign();
             byte[] derConcatnated = EcdsaUsingShaAlgorithm.convertDerToConcatenated(signatureData, SignatureConstant.EC256_SIGNATURE_LENGTH);

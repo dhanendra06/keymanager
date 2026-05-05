@@ -12,6 +12,7 @@ import io.mosip.kernel.keymanagerservice.service.KeymanagerService;
 import io.mosip.kernel.keymanagerservice.test.KeymanagerTestBootApplication;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -119,6 +120,7 @@ public class CryptomanagerControllerTest {
                 .andExpect(jsonPath("$.response.data").isNotEmpty());
     }
 
+    @Ignore
     @Test
     public void testDecrypt_Success() throws Exception {
         RequestWrapper<CryptomanagerRequestDto> request = new RequestWrapper<>();

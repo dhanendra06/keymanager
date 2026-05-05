@@ -14,6 +14,9 @@ import java.util.stream.Collectors;
 
 import jakarta.annotation.PostConstruct;
 
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
+
 import org.cache2k.Cache;
 import org.cache2k.Cache2kBuilder;
 import org.cache2k.expiry.Expiry;
@@ -104,6 +107,7 @@ public class KeymanagerDBHelper {
 
     private Cache<String, List<KeyAlias>> keyAliasCache = null;
 
+
     @PostConstruct
     public void init() {
         if (autoUpdate) {
@@ -118,7 +122,7 @@ public class KeymanagerDBHelper {
                         "Creating Cache object for key policy & Key Alias.");
         createCacheObject();
         createKeyAliasCacheObject();
-        LOGGER.info(KeymanagerConstant.SESSIONID, KeymanagerConstant.EMPTY, KeymanagerConstant.EMPTY, 
+        LOGGER.info(KeymanagerConstant.SESSIONID, KeymanagerConstant.EMPTY, KeymanagerConstant.EMPTY,
                         "Cache object for key policy & Key Alias creation completed.");
     }
 
@@ -189,6 +193,7 @@ public class KeymanagerDBHelper {
     * @param masterAlias         masterAlias
     * @param encryptedPrivateKey encryptedPrivateKey
     */
+    @CacheEvict(value = "keyStoreCacheable", key = "#alias")
     public void storeKeyInDBStore(String alias, String masterAlias, String certificateData, String encryptedPrivateKey) {
         KeyStore dbKeyStore = new KeyStore();
         LOGGER.info(KeymanagerConstant.SESSIONID, KeymanagerConstant.EMPTY, KeymanagerConstant.EMPTY, KeymanagerConstant.STOREDBKEY);
@@ -280,14 +285,11 @@ public class KeymanagerDBHelper {
     * @param keyAlias   alias of the key.
     * @return KeyStore {@KeyStore}
     */
+    @Cacheable(value = "keyStoreCacheable", key = "#keyAlias")
     public Optional<KeyStore> getKeyStoreFromDB(String keyAlias) {
-        Optional<KeyStore> dbKeyStore = keyStoreRepository.findByAlias(keyAlias);
-        /* if (!dbKeyStore.isPresent()) {
-            LOGGER.info(KeymanagerConstant.SESSIONID, KeymanagerConstant.DBKEYSTORE, dbKeyStore.toString(),
-                    "Key in DB Store does not exists. Throwing exception");
-            throw new NoUniqueAliasException(KeymanagerErrorConstant.NO_UNIQUE_ALIAS.getErrorCode(), KeymanagerErrorConstant.NO_UNIQUE_ALIAS.getErrorMessage());
-        } */
-        return dbKeyStore;
+        LOGGER.info(KeymanagerConstant.SESSIONID, KeymanagerConstant.EMPTY, KeymanagerConstant.EMPTY,
+                    "KeyStore cache MISS - fetching from DB for alias: " + keyAlias);
+        return keyStoreRepository.findByAlias(keyAlias);
     }
     
     /**

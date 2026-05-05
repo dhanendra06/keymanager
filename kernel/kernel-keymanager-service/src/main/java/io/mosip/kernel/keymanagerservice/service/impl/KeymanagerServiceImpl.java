@@ -303,8 +303,11 @@ public class KeymanagerServiceImpl implements KeymanagerService {
 			LOGGER.info(KeymanagerConstant.SESSIONID, KeymanagerConstant.CURRENTKEYALIAS,
 					currentKeyAlias.get(0).getAlias(),
 					"CurrentKeyAlias size is one. Will fetch keypair using this alias");
+			long perfStart = System.currentTimeMillis();
 			Optional<io.mosip.kernel.keymanagerservice.entity.KeyStore> keyFromDBStore = dbHelper
 					.getKeyStoreFromDB(currentKeyAlias.get(0).getAlias());
+			logKeymanagerPerf(KeymanagerConstant.GETPUBLICKEYDB, "getCertificateDataFromDB", perfStart);
+
 			if (!keyFromDBStore.isPresent()) {
 				LOGGER.info(KeymanagerConstant.SESSIONID, KeymanagerConstant.KEYFROMDB, keyFromDBStore.toString(),
 						"Key in DBStore does not exist for this alias. Throwing exception");
@@ -423,6 +426,12 @@ public class KeymanagerServiceImpl implements KeymanagerService {
 		}
 		return new CertificateInfo<>(alias, x509Cert);
 	}
+	private void logKeymanagerPerf(String phaseKey, String step, long startedAtMillis) {
+		long elapsedMillis = System.currentTimeMillis() - startedAtMillis;
+		String message = "perf: " + step + " took " + elapsedMillis + " ms";
+		LOGGER.info(KeymanagerConstant.SESSIONID, phaseKey, phaseKey, message);
+	}
+
 
 	/*
 	 * (non-Javadoc)
@@ -815,7 +824,10 @@ public class KeymanagerServiceImpl implements KeymanagerService {
 		} else {
 			LOGGER.info(KeymanagerConstant.SESSIONID, KeymanagerConstant.EMPTY, KeymanagerConstant.EMPTY,
 					"Reference Id is present. Will get Certificate from DB store");
+			long start = System.currentTimeMillis();
 			certificateData = getCertificateFromDBStore(appId, localDateTimeStamp, refId.get(), false);
+			logKeymanagerPerf(KeymanagerConstant.GET_CERTIFICATE, "getCertificateFromDBStore(getCertificate)", start);
+
 		}
 		
 		X509Certificate x509Cert = certificateData.getCertificate();

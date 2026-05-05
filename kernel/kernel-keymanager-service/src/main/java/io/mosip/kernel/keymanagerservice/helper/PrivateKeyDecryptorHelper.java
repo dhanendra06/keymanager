@@ -12,6 +12,7 @@ import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 
 import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
 
 import org.cache2k.Cache;
 import org.cache2k.Cache2kBuilder;
@@ -62,14 +63,32 @@ public class PrivateKeyDecryptorHelper {
         }
     }
 
+    /** Holds the resolved key pair to avoid Cache2k's "Arrays are not supported" error. */
+    private static final class KeyPairEntry {
+        final PrivateKey privateKey;
+        final Certificate certificate;
+        KeyPairEntry(PrivateKey privateKey, Certificate certificate) {
+            this.privateKey = privateKey;
+            this.certificate = certificate;
+        }
+    }
+
     // Replaces the previous unbounded ConcurrentHashMaps (cacheKeyStore +
     // cacheReferenceIds). Bounded by entryCapacity so memory does not grow
     // indefinitely as new partner certificates are registered over time.
     private Cache<String, CacheEntry> cacheDecryptData = null;
 
+    // Caches the resolved {PrivateKey, Certificate} pair by ksAlias so that the
+    // expensive HSM call + RSA unwrap + key reconstruction + PEM parse is done
+    // only once per unique key alias rather than on every decrypt request.
+    private Cache<String, KeyPairEntry> cachedKeyPairs = null;
+
     // Reuses the same property as keyAliasCache for consistent cache lifecycle.
     @Value("${mosip.kernel.keymanager.key.cache.expire.inMins:1440}")
     private long cacheExpireInMins;
+
+    @Value("${mosip.kernel.keymanager.key.cache.max.entries:2000}")
+    private long keyCacheMaxEntries;
 
     /**
 	 * Utility to generate Metadata
@@ -90,10 +109,26 @@ public class PrivateKeyDecryptorHelper {
             // context is reloaded multiple times within the same JVM.
             .name("privateKeyDecryptorData-" + this.hashCode())
             .expireAfterWrite(cacheExpireInMins, TimeUnit.MINUTES)
-            // 1000 entries covers large MOSIP deployments with many partner certificates
-            // while bounding the heap footprint (~3-5 KB per entry × 1000 = ~3-5 MB max).
-            .entryCapacity(1000)
+            .entryCapacity(keyCacheMaxEntries)
             .build();
+        cachedKeyPairs = new Cache2kBuilder<String, KeyPairEntry>() {}
+            .name("privateKeyPairs-" + this.hashCode())
+            .expireAfterWrite(cacheExpireInMins, TimeUnit.MINUTES)
+            .entryCapacity(keyCacheMaxEntries)
+            .build();
+    }
+
+    @PreDestroy
+    public void destroy() {
+        // Closing the caches deregisters them from Cache2k's global manager so that
+        // a new Spring context (e.g. @DirtiesContext tests) can recreate them even
+        // if the new bean happens to get the same hashCode as this one.
+        if (cacheDecryptData != null) {
+            cacheDecryptData.close();
+        }
+        if (cachedKeyPairs != null) {
+            cachedKeyPairs.close();
+        }
     }
 
     public KeyStore getDBKeyStoreData (String certThumbprintHex, String applicationId, String referenceId) {
@@ -124,6 +159,13 @@ public class PrivateKeyDecryptorHelper {
 
 		String ksAlias = dbKeyStore.getAlias();
 
+		KeyPairEntry cached = cachedKeyPairs.get(ksAlias);
+		if (cached != null) {
+			LOGGER.info(KeymanagerConstant.SESSIONID, KeymanagerConstant.EMPTY, KeymanagerConstant.EMPTY,
+					"Key objects cache HIT for alias: " + ksAlias);
+			return new Object[] {cached.privateKey, cached.certificate};
+		}
+
 		String privateKeyObj = dbKeyStore.getPrivateKey();
 		if (Objects.isNull(privateKeyObj)) {
             if (!fetchMasterKey) {
@@ -133,10 +175,11 @@ public class PrivateKeyDecryptorHelper {
 					KeymanagerErrorConstant.DECRYPTION_NOT_ALLOWED.getErrorMessage());
             }
 			LOGGER.info(KeymanagerConstant.SESSIONID, KeymanagerConstant.EMPTY, KeymanagerConstant.EMPTY,
-					"Private not found in key store. Getting private key from HSM.");
+					"Key objects cache MISS - fetching master key from HSM for alias: " + ksAlias);
 			PrivateKeyEntry masterKeyEntry = keyStore.getAsymmetricKey(ksAlias);
 			PrivateKey masterPrivateKey = masterKeyEntry.getPrivateKey();
 			Certificate masterCert = masterKeyEntry.getCertificate();
+			cachedKeyPairs.put(ksAlias, new KeyPairEntry(masterPrivateKey, masterCert));
 			return new Object[] {masterPrivateKey, masterCert};
 		}
 
@@ -149,6 +192,8 @@ public class PrivateKeyDecryptorHelper {
 					KeymanagerErrorConstant.DECRYPTION_NOT_ALLOWED.getErrorMessage());
 		}
 
+		LOGGER.info(KeymanagerConstant.SESSIONID, KeymanagerConstant.EMPTY, KeymanagerConstant.EMPTY,
+				"Key objects cache MISS - unwrapping private key from DB for alias: " + ksAlias);
 		PrivateKeyEntry masterKeyEntry = keyStore.getAsymmetricKey(dbKeyStore.getMasterAlias());
 		PrivateKey masterPrivateKey = masterKeyEntry.getPrivateKey();
 		PublicKey masterPublicKey = masterKeyEntry.getCertificate().getPublicKey();
@@ -158,6 +203,7 @@ public class PrivateKeyDecryptorHelper {
 			KeyFactory keyFactory = KeyFactory.getInstance(KeymanagerConstant.RSA);
 			PrivateKey privateKey = keyFactory.generatePrivate(new PKCS8EncodedKeySpec(decryptedPrivateKey));
 			Certificate certificate = keymanagerUtil.convertToCertificate(dbKeyStore.getCertificateData());
+			cachedKeyPairs.put(ksAlias, new KeyPairEntry(privateKey, certificate));
 			return new Object[] {privateKey, certificate};
 		} catch (InvalidDataException | InvalidKeyException | NullDataException | NullKeyException
 				| NullMethodException | InvalidKeySpecException | NoSuchAlgorithmException e) {

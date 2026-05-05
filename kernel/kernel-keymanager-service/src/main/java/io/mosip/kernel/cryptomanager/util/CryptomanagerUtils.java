@@ -14,8 +14,14 @@ import java.security.interfaces.RSAPublicKey;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+
+import jakarta.annotation.PostConstruct;
+
+import org.cache2k.Cache;
+import org.cache2k.Cache2kBuilder;
 
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
@@ -64,6 +70,12 @@ public class CryptomanagerUtils {
 
 	private static ObjectMapper mapper = JsonMapper.builder().addModule(new AfterburnerModule()).build();
 
+	// Caches resolved Certificate objects by "appId-refId" key, eliminating the
+	// repeated HSM call + X509Cert→PEM→Certificate roundtrip on every encrypt.
+	// Static so it survives @RefreshScope bean recreation without losing warm entries.
+	private static Cache<String, Certificate> certificateCache = null;
+	private static final Object CERT_CACHE_INIT_LOCK = new Object();
+
 	// Single shared instance seeded once at JVM startup. SecureRandom.nextBytes()
 	// is thread-safe (synchronized internally). Static so it survives @RefreshScope
 	// bean recreation and avoids re-seeding overhead (and potential entropy
@@ -98,6 +110,12 @@ public class CryptomanagerUtils {
 	@Value("${mosip.kernel.keymanager.jwtEncrypt.validate.json:true}")
 	private boolean confValidateJson;
 
+	@Value("${mosip.kernel.keymanager.key.cache.expire.inMins:1440}")
+	private long certCacheExpireInMins;
+
+	@Value("${mosip.kernel.keymanager.cert.cache.max.entries:1000}")
+	private long certCacheMaxEntries;
+
 	/** The key manager. */
 	@Autowired
 	private KeymanagerService keyManager;
@@ -108,6 +126,36 @@ public class CryptomanagerUtils {
 	@Autowired
 	private KeymanagerDBHelper dbHelper;
 
+	@PostConstruct
+	public void init() {
+		// Use double-checked locking so that only one cache instance is created
+		// across all @RefreshScope bean recreations within the same JVM.
+		if (certificateCache == null) {
+			synchronized (CERT_CACHE_INIT_LOCK) {
+				if (certificateCache == null) {
+					certificateCache = new Cache2kBuilder<String, Certificate>() {}
+						.name("cryptoCertCache")
+						.expireAfterWrite(certCacheExpireInMins, TimeUnit.MINUTES)
+						.entryCapacity(certCacheMaxEntries)
+						.build();
+				}
+			}
+		}
+		// If the static cache was closed (e.g. by a previous test context teardown),
+		// rebuild it so this bean instance has a live cache to use.
+		if (certificateCache.isClosed()) {
+			synchronized (CERT_CACHE_INIT_LOCK) {
+				if (certificateCache.isClosed()) {
+					certificateCache = new Cache2kBuilder<String, Certificate>() {}
+						.name("cryptoCertCache")
+						.expireAfterWrite(certCacheExpireInMins, TimeUnit.MINUTES)
+						.entryCapacity(certCacheMaxEntries)
+						.build();
+				}
+			}
+		}
+	}
+
 	/**
 	 * Calls Key-Manager-Service to get public key of an application.
 	 *
@@ -115,10 +163,7 @@ public class CryptomanagerUtils {
 	 * @return {@link Certificate} returned by Key Manager Service
 	 */
 	public Certificate getCertificate(CryptomanagerRequestDto cryptomanagerRequestDto) {
-		String certData = getCertificateFromKeyManager(cryptomanagerRequestDto.getApplicationId(),
-										cryptomanagerRequestDto.getReferenceId());
-
-		return keymanagerUtil.convertToCertificate(certData);
+		return getCertificate(cryptomanagerRequestDto.getApplicationId(), cryptomanagerRequestDto.getReferenceId());
 	}
 
 	/**
@@ -332,8 +377,19 @@ public class CryptomanagerUtils {
 	}
 
 	public Certificate getCertificate(String applicationId, String referenceId) {
+		String cacheKey = applicationId + KeymanagerConstant.HYPHEN + (referenceId == null ? KeymanagerConstant.EMPTY : referenceId);
+		Certificate cached = certificateCache.get(cacheKey);
+		if (cached != null) {
+			LOGGER.info(CryptomanagerConstant.SESSIONID, CryptomanagerConstant.ENCRYPT, KeymanagerConstant.EMPTY,
+					"Certificate cache HIT for: " + cacheKey);
+			return cached;
+		}
+		LOGGER.info(CryptomanagerConstant.SESSIONID, CryptomanagerConstant.ENCRYPT, KeymanagerConstant.EMPTY,
+				"Certificate cache MISS - fetching from key manager for: " + cacheKey);
 		String certData = getCertificateFromKeyManager(applicationId, referenceId);
-		return keymanagerUtil.convertToCertificate(certData);
+		Certificate cert = keymanagerUtil.convertToCertificate(certData);
+		certificateCache.put(cacheKey, cert);
+		return cert;
 	}
 
 	public void validateEncKeySize(Certificate encCert) {

@@ -18,6 +18,8 @@ import org.springframework.web.bind.annotation.RestController;
 import io.mosip.kernel.core.http.RequestWrapper;
 import io.mosip.kernel.core.http.ResponseFilter;
 import io.mosip.kernel.core.http.ResponseWrapper;
+import io.mosip.kernel.core.logger.spi.Logger;
+import io.mosip.kernel.keymanagerservice.logger.KeymanagerLogger;
 import io.mosip.kernel.cryptomanager.dto.Argon2GenerateHashRequestDto;
 import io.mosip.kernel.cryptomanager.dto.Argon2GenerateHashResponseDto;
 import io.mosip.kernel.cryptomanager.dto.CryptoWithPinRequestDto;
@@ -50,6 +52,8 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 @Tag(name = "cryptomanager", description = "Operation related to Encryption and Decryption")
 public class CryptomanagerController {
 
+	private static final Logger LOGGER = KeymanagerLogger.getLogger(CryptomanagerController.class);
+
 	/**
 	 * {@link CryptomanagerService} instance
 	 */
@@ -74,8 +78,11 @@ public class CryptomanagerController {
 	@PostMapping(value = "/encrypt", produces = "application/json")
 	public ResponseWrapper<CryptomanagerResponseDto> encrypt(
 			@ApiParam("Salt and Data to encrypt in BASE64 encoding with meta-data") @RequestBody @Valid RequestWrapper<CryptomanagerRequestDto> cryptomanagerRequestDto) {
+		long startTime = System.currentTimeMillis();
 		ResponseWrapper<CryptomanagerResponseDto> response = new ResponseWrapper<>();
 		response.setResponse(cryptomanagerService.encrypt(cryptomanagerRequestDto.getRequest()));
+		LOGGER.info("PERF", "CryptomanagerController", "encrypt",
+				"Perf_CryptomanagerController_encrypt timeTaken: " + (System.currentTimeMillis() - startTime) + "ms");
 		return response;
 	}
 
@@ -97,8 +104,11 @@ public class CryptomanagerController {
 	@PostMapping(value = "/decrypt", produces = "application/json")
 	public ResponseWrapper<CryptomanagerResponseDto> decrypt(
 			@ApiParam("Salt and Data to decrypt in BASE64 encoding with meta-data") @RequestBody @Valid RequestWrapper<CryptomanagerRequestDto> cryptomanagerRequestDto) {
+		long startTime = System.currentTimeMillis();
 		ResponseWrapper<CryptomanagerResponseDto> response = new ResponseWrapper<>();
 		response.setResponse(cryptomanagerService.decrypt(cryptomanagerRequestDto.getRequest()));
+		LOGGER.info("PERF", "CryptomanagerController", "decrypt",
+				"Perf_CryptomanagerController_decrypt timeTaken: " + (System.currentTimeMillis() - startTime) + "ms");
 		return response;
 	}
 
@@ -121,8 +131,11 @@ public class CryptomanagerController {
 	@PostMapping(value = "/encryptWithPin", produces = "application/json")
 	public ResponseWrapper<CryptoWithPinResponseDto> encryptWithPin(
 			@ApiParam("Pin and Data to encrypt") @RequestBody @Valid RequestWrapper<CryptoWithPinRequestDto> requestDto) {
+		long startTime = System.currentTimeMillis();
 		ResponseWrapper<CryptoWithPinResponseDto> responseDto = new ResponseWrapper<>();
 		responseDto.setResponse(cryptomanagerService.encryptWithPin(requestDto.getRequest()));
+		LOGGER.info("PERF", "CryptomanagerController", "encryptWithPin",
+				"Perf_CryptomanagerController_encryptWithPin timeTaken: " + (System.currentTimeMillis() - startTime) + "ms");
 		return responseDto;
 	}
 
@@ -145,8 +158,11 @@ public class CryptomanagerController {
 	@PostMapping(value = "/decryptWithPin", produces = "application/json")
 	public ResponseWrapper<CryptoWithPinResponseDto> decryptWithPin(
 			@ApiParam("Pin and Data to decrypt") @RequestBody @Valid RequestWrapper<CryptoWithPinRequestDto> requestDto) {
+		long startTime = System.currentTimeMillis();
 		ResponseWrapper<CryptoWithPinResponseDto> responseDto = new ResponseWrapper<>();
 		responseDto.setResponse(cryptomanagerService.decryptWithPin(requestDto.getRequest()));
+		LOGGER.info("PERF", "CryptomanagerController", "decryptWithPin",
+				"Perf_CryptomanagerController_decryptWithPin timeTaken: " + (System.currentTimeMillis() - startTime) + "ms");
 		return responseDto;
 	}
 
@@ -167,8 +183,11 @@ public class CryptomanagerController {
 	@PostMapping(value = "/jwtEncrypt", produces = "application/json")
 	public ResponseWrapper<JWTCipherResponseDto> jwtEncrypt(
 			@ApiParam("Data to encrypt in BASE64 encoding with meta-data") @RequestBody @Valid RequestWrapper<JWTEncryptRequestDto> jwtCipherRequestDto) {
+		long startTime = System.currentTimeMillis();
 		ResponseWrapper<JWTCipherResponseDto> response = new ResponseWrapper<>();
 		response.setResponse(cryptomanagerService.jwtEncrypt(jwtCipherRequestDto.getRequest()));
+		LOGGER.info("PERF", "CryptomanagerController", "jwtEncrypt",
+				"Perf_CryptomanagerController_jwtEncrypt timeTaken: " + (System.currentTimeMillis() - startTime) + "ms");
 		return response;
 	}
 
@@ -189,8 +208,11 @@ public class CryptomanagerController {
 	@PostMapping(value = "/jwtDecrypt", produces = "application/json")
 	public ResponseWrapper<JWTCipherResponseDto> jwtDecrypt(
 			@ApiParam("Data to decrypt in BASE64 encoding with meta-data") @RequestBody @Valid RequestWrapper<JWTDecryptRequestDto> jwtCipherRequestDto) {
+		long startTime = System.currentTimeMillis();
 		ResponseWrapper<JWTCipherResponseDto> response = new ResponseWrapper<>();
 		response.setResponse(cryptomanagerService.jwtDecrypt(jwtCipherRequestDto.getRequest()));
+		LOGGER.info("PERF", "CryptomanagerController", "jwtDecrypt",
+				"Perf_CryptomanagerController_jwtDecrypt timeTaken: " + (System.currentTimeMillis() - startTime) + "ms");
 		return response;
 	}
 
@@ -211,8 +233,11 @@ public class CryptomanagerController {
 	@PostMapping(value = "/generateArgon2Hash", produces = "application/json")
 	public ResponseWrapper<Argon2GenerateHashResponseDto> generateArgon2Hash(
 			@ApiParam("Data to generate Argon2 ") @RequestBody @Valid RequestWrapper<Argon2GenerateHashRequestDto> argon2GenHashRequestDto) {
+		long startTime = System.currentTimeMillis();
 		ResponseWrapper<Argon2GenerateHashResponseDto> response = new ResponseWrapper<>();
 		response.setResponse(cryptomanagerService.generateArgon2Hash(argon2GenHashRequestDto.getRequest()));
+		LOGGER.info("PERF", "CryptomanagerController", "generateArgon2Hash",
+				"Perf_CryptomanagerController_generateArgon2Hash timeTaken: " + (System.currentTimeMillis() - startTime) + "ms");
 		return response;
 	}
 }
